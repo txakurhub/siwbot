@@ -1,22 +1,56 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import ChatBot from "react-chatbotify";
 import { validateDate } from "./validations";
 import botAvatar from "../assets/siwcargo.png";
+import logo from "../assets/logo.png";
 import {
   allCountries,
   forbiddenCountries,
   getCitiesByCountry,
+  getCountryCode,
   searchCountry,
 } from "./countries";
 
 const ChatForm = () => {
   const [form, setForm] = useState({});
+  const [locationOptions, setLocationOptions] = useState([]);
+  const [nextStep, setNextStep] = useState(6);
+  const [currentStep, setCurrentStep] = useState(1);
 
   const allowedCountryCodes = Object.keys(allCountries).filter(
     (code) => !Object.hasOwnProperty.call(forbiddenCountries, code)
   );
   const username = "txakur";
   getCitiesByCountry(allowedCountryCodes, username);
+
+  async function validateCountryInput(params, inputStep, nextPath) {
+    const countryCode = getCountryCode(params.userInput);
+    if (Number(params.userInput)) {
+      await params.injectMessage("Un país no puede ser un número.");
+      return;
+    }
+    if (countryCode && forbiddenCountries[countryCode]) {
+      await params.injectMessage(
+        "Servicios no disponibles para el país seleccionado. Por favor, elige otro destino u origen."
+      );
+      return;
+    }
+    if (searchCountry(params.userInput) === 0) {
+      await params.injectMessage("El país no existe.");
+      return;
+    }
+    if (searchCountry(params.userInput) === 1) {
+      handleInputChange(inputStep, params.userInput);
+      return nextPath;
+    } else {
+      const locations = searchCountry(params.userInput);
+      setLocationOptions(
+        typeof locations === "string" ? [locations] : locations
+      );
+      setNextStep(nextPath);
+      return "19";
+    }
+  }
 
   const flow = {
     start: {
@@ -30,143 +64,138 @@ const ChatForm = () => {
         "Responsabilidad civil al transportista",
       ],
       chatDisabled: true,
-      function: (params) => handleInputChange("coverageType", params.userInput),
-      path: "operationNumber",
+      function: (params) => handleInputChange(1, params.userInput),
+      path: "2",
     },
-    operationNumber: {
+    2: {
       message:
         "Indique un número de operación con el que desee identificar la operación:",
       user: true,
-      function: (params) =>
-        handleInputChange("operationNumber", params.userInput),
-      path: "consignee",
+      function: (params) => handleInputChange(2, params.userInput),
+      path: "3",
     },
-    consignee: {
+    3: {
       message: "¿Quién es el consignee según la factura comercial?",
       user: true,
-      function: (params) => handleInputChange("consignee", params.userInput),
-      path: "shipper",
+      function: (params) => handleInputChange(3, params.userInput),
+      path: "4",
     },
-    shipper: {
+    4: {
       message: "¿Y el shipper?",
       user: true,
-      function: (params) => handleInputChange("shipper", params.userInput),
-      path: "originCountry",
+      function: (params) => handleInputChange(4, params.userInput),
+      path: "5",
     },
-    originCountry: {
+    5: {
       message: "¿Cuál es el país de origen?",
-      // consultar si el país es prohibido
-      // caso negativo llamar a la api de ciudades
       user: true,
-      path: async (params) => {
-        if (searchCountry(params.userInput)) {
-          handleInputChange("originCountry", params.userInput);
-          return "originCity";
-        }
-        await params.injectMessage(
-          "No pude entender el país ingresado, podrías escribirlo nuevamente?"
-        );
-        return;
-      },
+      path: async (params) => await validateCountryInput(params, 5, "6"),
     },
-    originCity: {
+    6: {
       message: "¿Desde qué ciudad?",
       // consultar si la ciudad existe
       user: true,
-      function: (params) => handleInputChange("originCity", params.userInput),
-      path: "destinationCountry",
+      function: (params) => handleInputChange(6, params.userInput),
+      path: "7",
     },
-    destinationCountry: {
+    7: {
       message: "¿Cuál es el país de destino?",
       user: true,
-      function: (params) =>
-        handleInputChange("destinationCountry", params.userInput),
-      path: "destinationCity",
+      function: (params) => handleInputChange(7, params.userInput),
+      path: async (params) => await validateCountryInput(params, 7, "8"),
     },
-    destinationCity: {
+    8: {
       message: "¿A qué ciudad?",
       user: true,
-      function: (params) =>
-        handleInputChange("destinationCity", params.userInput),
-      path: "departureDate",
+      function: (params) => handleInputChange(8, params.userInput),
+      path: "9",
     },
-    departureDate: {
+    9: {
       message: "¿Cuándo saldrá su carga? (DD/MM/AAAA)",
       user: true,
-      function: (params) =>
-        handleInputChange("departureDate", params.userInput),
+      function: (params) => handleInputChange(9, params.userInput),
       path: async (params) => {
-        if (
-          validateDate(params.userInput) !== true
-          // && isAllowed(country)
-        )
-          if (validateDate(params.userInput)) {
-            return "containerCount";
-          }
-        await params.injectMessage(
-          "Debe escribir un formato de fecha válido. Ej: 12/08/2024"
+        const userInputDate = new Date(
+          params.userInput.split("/").reverse().join("-") + "T00:00:00"
         );
-        return;
+        const today = new Date(new Date().toDateString());
+
+        if (!validateDate(params.userInput)) {
+          const date = new Date();
+          await params.injectMessage(
+            `Debe escribir un formato de fecha válido. Ej: ${date.toLocaleDateString()}`
+          );
+          return;
+        } else if (userInputDate < today) {
+          await params.injectMessage(
+            "La fecha de envío no puede ser anterior a hoy."
+          );
+          return;
+        } else {
+          return "10";
+        }
       },
     },
-    containerCount: {
+    10: {
       message: "¿En cuántos contenedores moverá su carga?",
       user: true,
-      function: (params) =>
-        handleInputChange("containerCount", params.userInput),
-      path: "incoterms",
+      function: (params) => handleInputChange(10, params.userInput),
+      path: async (params) => {
+        if (typeof parseInt(params.userInput) !== "number") {
+          await params.injectMessage("Debe escribir un número.");
+          return;
+        } else {
+          return "11";
+        }
+      },
     },
-    incoterms: {
+    11: {
       message: "¿Cuál es la forma de venta (Incoterms)?",
       user: true,
-      function: (params) => handleInputChange("incoterms", params.userInput),
-      path: "goodsIncluded",
+      function: (params) => handleInputChange(11, params.userInput),
+      path: "12",
     },
-    goodsIncluded: {
+    12: {
       message:
         "¿La mercadería transportada está incluida en estos tipos? a. Computación y celulares; b. Electrónica, TV, audio y video; c. Artículos que contengan cobre.",
       options: ["Sí", "No"],
       function: (params) => {
-        handleInputChange("goodsIncluded", params.userInput);
+        handleInputChange(12, params.userInput);
       },
-      path: (params) =>
-        params.userInput === "No" ? "secGoods" : "invoiceNumber",
+      path: (params) => (params.userInput === "No" ? "13" : "15"),
     },
-    secGoods: {
+    13: {
       message:
         "¿La mercadería transportada está incluida en estos tipos? a. Autopartes, neumáticos, bicicletas, motocicletas, combustibles y lubricantes; b. Textiles, indumentaria, calzado y marroquinería; c. Medicamentos; d. Artículos de perfumería, tocador y cosméticos. Juguetería y bazar. Electrodomésticos; e. Alimentos y bebidas; f. Ferretería, pinturas; g. Cables y metales; h. Nylon, polietileno, polipropileno y poliestireno; i. Scraps de metales.",
       options: ["Sí", "No"],
       function: (params) => {
-        handleInputChange("secGoods", params.userInput);
+        handleInputChange(13, params.userInput);
       },
-      path: (params) => (params.userInput === "No" ? "merc" : "invoiceNumber"),
+      path: (params) => (params.userInput === "No" ? "14" : "15"),
     },
-    merc: {
+    14: {
       message: "¿Qué tipo de mercadería transporta?",
       user: true,
-      function: (params) => handleInputChange("merc", params.userInput),
-      path: "invoiceNumber",
+      function: (params) => handleInputChange(14, params.userInput),
+      path: "15",
     },
-    invoiceNumber: {
+    15: {
       message: "Indique el número de factura.",
       user: true,
-      function: (params) =>
-        handleInputChange("invoiceNumber", params.userInput),
-      path: "invoiceFile",
+      function: (params) => handleInputChange(15, params.userInput),
+      path: "16",
     },
-    invoiceFile: {
+    16: {
       message: "Adjunte archivo de factura.",
-      file: true,
       chatDisabled: true,
-      mimeTypes: [".pdf"],
-      function: (fileData) => handleUpload("facturas", fileData),
-      path: "summary",
+      file: (params) => handleUpload(params),
+      path: "17",
     },
-    summary: {
+    17: {
       message:
         "Gracias por completar el formulario. Aquí están los detalles que proporcionó:",
       render: (
-        <div>
+        <div style={{padding: "3px"}}>
           <p>Valor mercadería: {form.operationNumber}</p>
           <p>Valor impuestos: {form.consignee}</p>
           <p>Valor transporte: {form.shipper}</p>
@@ -176,87 +205,66 @@ const ChatForm = () => {
       options: ["Reiniciar", "Continuar"],
       function: (params) => {
         if (params.userInput === "Reiniciar") {
-          return "start"; // Esto reinicia el flujo delchatbot. Si el usuario elige "Finalizar", se podría cerrar la conversación o realizar alguna acción adicional según lo requiera tu implementación.
+          return "1";
         }
       },
-      path: "gh",
+      path: "18",
     },
-    gh: {
+    18: {
       message: "Guerra o huelga",
       options: ["Sí", "No"],
-      function: (params) => handleInputChange("gh", params.userInput === "Sí"),
+      function: (params) => handleInputChange(18, params.userInput === "Sí"),
       chatDisabled: true,
+      end: true,
+    },
+    19: {
+      message: "Quizás quisiste decir:",
+      options: locationOptions,
+      function: (params) => handleInputChange(nextStep - 1, params.userInput),
+      path: async (params) =>
+        await validateCountryInput(params, currentStep, nextStep.toString()),
+    },
+    20: {
+      message:
+        "Servicios no disponibles para el país seleccionado. Por favor, elige otro destino u origen.",
     },
   };
+
   const options = {
     theme: {
-      primaryColor: "#42b0c5",
-      secondaryColor: "#491d8d",
-      fontFamily:
-        "-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Roboto', 'Oxygen', " +
-        "'Ubuntu', 'Cantarell', 'Fira Sans', 'Droid Sans', 'Helvetica Neue', " +
-        "sans-serif",
-      showHeader: true,
-      showFooter: true,
-      showInputRow: true,
-      // actionDisabledIcon: actionDisabledIcon,
-      embedded: false,
-      desktopEnabled: true,
-      mobileEnabled: true,
+      primaryColor: "#29a9d3",
+      secondaryColor: "#003366",
+    },
+    header: {
+      title: <h3 style={{ cursor: "pointer", margin: 0 }}>SiwBot</h3>,
+      showAvatar: false,
+      avatar: logo,
     },
     tooltip: {
       mode: "NEVER",
-    },
-    chatButton: {
-      // icon: chatIcon,
-    },
-    header: {
-      title: (
-        <h3
-          style={{ cursor: "pointer", margin: 0 }}
-          onClick={() => window.open("https://github.com/tjtanjin/")}
-        >
-          SiwBot
-        </h3>
-      ),
-      showAvatar: true,
-      avatar: botAvatar,
-      // closeChatIcon: closeChatIcon,
     },
     notification: {
       disabled: false,
       defaultToggledOn: true,
       volume: 0.2,
-      // icon: notificationIcon,
-      // sound: notificationSound,
     },
-    audio: {
-      disabled: true,
-      defaultToggledOn: false,
-      language: "en-US",
-      voiceNames: [
-        "Microsoft David - English (United States)",
-        "Alex (English - United States)",
-      ],
-      rate: 1,
-      volume: 1,
-      // icon: audioIcon,
+    chatButton: {
+      icon: logo,
     },
     chatHistory: {
-      disabled: false,
+      disabled: true,
       maxEntries: 30,
       storageKey: "rcb-history",
-      viewChatHistoryButtonText: "Load Chat History ⟳",
-      chatHistoryLineBreakText: "----- Previous Chat History -----",
+      viewChatHistoryButtonText: "Cargar historial ⟳",
+      chatHistoryLineBreakText: "----- Chat Previo -----",
     },
     chatInput: {
       disabled: false,
-      enabledPlaceholderText: "Type your message...",
+      enabledPlaceholderText: "Escriba aquí su mensaje...",
       disabledPlaceholderText: "",
       showCharacterCount: false,
       characterLimit: -1,
       botDelay: 1000,
-      // sendButtonIcon: sendButtonIcon,
       blockSpam: true,
       sendOptionOutput: true,
       sendCheckboxOutput: true,
@@ -272,7 +280,6 @@ const ChatForm = () => {
     userBubble: {
       animate: true,
       showAvatar: false,
-      // avatar: userAvatar,
       simStream: false,
       streamSpeed: 30,
     },
@@ -283,57 +290,17 @@ const ChatForm = () => {
       simStream: false,
       streamSpeed: 30,
     },
-    voice: {
-      disabled: true,
-      defaultToggledOn: false,
-      timeoutPeriod: 10000,
-      autoSendDisabled: false,
-      autoSendPeriod: 1000,
-      // icon: voiceIcon,
-    },
-    footer: {
-      text: (
-        <div
-          style={{ cursor: "pointer" }}
-          onClick={() => window.open("https://react-chatbotify.tjtanjin.com")}
-        ></div>
-      ),
-    },
+    footer: { text: "" },
+    emoji: { disabled: true },
     fileAttachment: {
-      disabled: false,
+      disabled: false, // especificar paso ?
       multiple: true,
-      accept: ".png",
-      // icon: fileAttachmentIcon,
-    },
-    emoji: {
-      disabled: false,
-      // icon: emojiIcon,
-      list: [
-        "😀",
-        "😃",
-        "😄",
-        "😅",
-        "😊",
-        "😌",
-        "😇",
-        "🙃",
-        "🤣",
-        "😍",
-        "🥰",
-        "🥳",
-        "🎉",
-        "🎈",
-        "🚀",
-        "⭐️",
-      ],
-    },
-    advance: {
-      useCustomMessages: false,
-      useCustomBotOptions: false,
-      useCustomPaths: false,
+      accept: ".pdf",
     },
   };
+
   const handleInputChange = (stepId, userInput) => {
+    setCurrentStep(stepId + 1);
     setForm((prevData) => ({
       ...prevData,
       [stepId]: userInput,
@@ -341,10 +308,8 @@ const ChatForm = () => {
   };
   const handleUpload = (params) => {
     const files = params.files;
-    console.log(files);
+    console.log(params);
   };
-
-  // Validación isForbidden para Origen y Destino, Fecha de salida,
 
   return <ChatBot options={options} flow={flow} />;
 };

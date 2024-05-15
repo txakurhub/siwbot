@@ -339,39 +339,25 @@ export async function getCitiesByCountry(countries, username) {
 
 export function searchCountry(userInput) {
   const normalizedInput = userInput.trim().toLowerCase();
-
-  // Buscar coincidencias exactas
   const exactMatches = Object.entries(allCountries).filter(
     ([code, name]) => name.toLowerCase() === normalizedInput
   );
   if (exactMatches.length === 1) {
-    console.log(
-      `Found exact match: ${exactMatches[0][1]} (${exactMatches[0][0]})`
-    );
-    return true;
-  } else if (exactMatches.length > 1) {
-    console.log("Multiple exact matches found. Please specify:");
-    exactMatches.forEach(([code, name]) => console.log(`${name} (${code})`));
-    // Aquí podrías permitir al usuario especificar cuál de las coincidencias quiere seleccionar
+    return 1;
   } else {
-    // Buscar coincidencias parciales si no hay coincidencias exactas
     const partialMatches = Object.entries(allCountries).filter(([code, name]) =>
       name.toLowerCase().includes(normalizedInput)
     );
-
     if (partialMatches.length === 0) {
-      console.log("No matches found.");
+      return 0;
     } else if (partialMatches.length === 1) {
-      console.log(
-        `Did you mean: ${partialMatches[0][1]}? (${partialMatches[0][0]})`
-      );
-      // Similar a los matches exactos, retornar o pedir confirmación
+      return partialMatches[0][1];
     } else {
-      console.log("Multiple matches found. Did you mean one of the following?");
-      partialMatches.forEach(([code, name]) =>
-        console.log(`${name} (${code})`)
-      );
-      // Permitir al usuario elegir o confirmar la opción correcta
+      return partialMatches.map((c) => c[1]);
     }
   }
+}
+
+export function getCountryCode(countryName) {
+  return Object.keys(forbiddenCountries).find(key => forbiddenCountries[key].split(" || ").includes(countryName));
 }

@@ -1,21 +1,54 @@
 import { useState } from "react";
 import { ChatBot } from "react-chatbotify";
 
-const CustomChatBot = ({ flow, options }) => {
+const CustomChatBot = () => {
   const [customFlow, setCustomFlow] = useState(initialFlow);
   const [customOptions, setCustomOptions] = useState(initialOptions);
-  const [currentStep, setCurrentStep] = useState(null);
+  const [currentStep, setCurrentStep] = useState("step1");
   const [form, setForm] = useState({});
 
-  const handleInputChange = (stepId, userInput) => {
-    setForm((prevData) => ({
-      ...prevData,
-      [stepId]: userInput,
+  const handleInputChange = (key, value) => {
+    setForm(prevForm => ({
+      ...prevForm,
+      [key]: value
     }));
   };
+
   const handleUpload = (params) => {
     const files = params.files;
     console.log(files);
+  };
+
+  const handleSubmit = () => {
+    const nextStep = initialFlow[currentStep].path;
+    if (typeof nextStep === 'function') {
+      setCurrentStep(nextStep(form));
+    } else {
+      setCurrentStep(nextStep);
+    }
+  };
+
+  const renderInputComponent = (inputType, stepKey) => {
+    switch (inputType) {
+      case 'text':
+        return <input type="text" onChange={e => handleInputChange(stepKey, e.target.value)} />;
+      case 'date':
+        return <input type="date" onChange={e => handleInputChange(stepKey, e.target.value)} />;
+      case 'select':
+        return (
+          <select onChange={e => handleInputChange(stepKey, e.target.value)}>
+            {initialFlow[currentStep].options.map(option => (
+              <option key={option} value={option}>{option}</option>
+            ))}
+          </select>
+        );
+      case 'autocomplete':
+        // Aquí integrarías un componente de autocompletado.
+        break;
+      // Añade más casos según sea necesario.
+      default:
+        return <input type="text" onChange={e => handleInputChange(stepKey, e.target.value)} />;
+    }
   };
 
   const steps = {
@@ -160,6 +193,7 @@ const CustomChatBot = ({ flow, options }) => {
       },
     },
   };
+
   return <ChatBot flow={flow} options={options} />;
 };
 
