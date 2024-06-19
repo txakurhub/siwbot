@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import ChatBot from "react-chatbotify";
 import { validateDate } from "./validations";
 import botAvatar from "../assets/siwcargo.png";
@@ -6,7 +6,6 @@ import logo from "../assets/logo.png";
 import {
   allCountries,
   forbiddenCountries,
-  getCitiesByCountry,
   getCountryCode,
   searchCountry,
 } from "./countries";
@@ -15,13 +14,13 @@ const ChatForm = () => {
   const [form, setForm] = useState({});
   const [locationOptions, setLocationOptions] = useState([]);
   const [nextStep, setNextStep] = useState(6);
+  const [currentCountry, setCurrentCountry] = useState("");
   const [currentStep, setCurrentStep] = useState(1);
+  const [warning, setWarning] = useState({});
 
   const allowedCountryCodes = Object.keys(allCountries).filter(
     (code) => !Object.hasOwnProperty.call(forbiddenCountries, code)
   );
-  const username = "txakur";
-  getCitiesByCountry(allowedCountryCodes, username);
 
   async function validateCountryInput(params, inputStep, nextPath) {
     const countryCode = getCountryCode(params.userInput);
@@ -30,17 +29,20 @@ const ChatForm = () => {
       return;
     }
     if (countryCode && forbiddenCountries[countryCode]) {
-      await params.injectMessage(
-        "Servicios no disponibles para el país seleccionado. Por favor, elige otro destino u origen."
-      );
-      return;
+      setWarning((prevState) => ({
+        ...prevState,
+        currentStep: forbiddenCountries[countryCode],
+      }));
     }
     if (searchCountry(params.userInput) === 0) {
+      console.log(params.userInput);
       await params.injectMessage("El país no existe.");
       return;
     }
     if (searchCountry(params.userInput) === 1) {
       handleInputChange(inputStep, params.userInput);
+      setCurrentCountry(params.userInput);
+      setCurrentStep(nextPath);
       return nextPath;
     } else {
       const locations = searchCountry(params.userInput);
@@ -48,7 +50,7 @@ const ChatForm = () => {
         typeof locations === "string" ? [locations] : locations
       );
       setNextStep(nextPath);
-      return "19";
+      return "22";
     }
   }
 
@@ -93,7 +95,6 @@ const ChatForm = () => {
     },
     6: {
       message: "¿Desde qué ciudad?",
-      // consultar si la ciudad existe
       user: true,
       function: (params) => handleInputChange(6, params.userInput),
       path: "7",
@@ -162,7 +163,14 @@ const ChatForm = () => {
       function: (params) => {
         handleInputChange(12, params.userInput);
       },
-      path: (params) => (params.userInput === "No" ? "13" : "15"),
+      path: (params) => {
+        if (params.userInput === "No") {
+          return "13";
+        } else {
+          setWarning((prevState) => ({ ...prevState, merchType: 1 }));
+          return "15";
+        }
+      },
     },
     13: {
       message:
@@ -171,7 +179,14 @@ const ChatForm = () => {
       function: (params) => {
         handleInputChange(13, params.userInput);
       },
-      path: (params) => (params.userInput === "No" ? "14" : "15"),
+      path: (params) => {
+        if (params.userInput === "No") {
+          return "14";
+        } else {
+          setWarning((prevState) => ({ ...prevState, merchType: 2 }));
+          return "15";
+        }
+      },
     },
     14: {
       message: "¿Qué tipo de mercadería transporta?",
@@ -192,41 +207,61 @@ const ChatForm = () => {
       path: "17",
     },
     17: {
-      message:
-        "Gracias por completar el formulario. Aquí están los detalles que proporcionó:",
-      render: (
-        <div style={{padding: "3px"}}>
-          <p>Valor mercadería: {form.operationNumber}</p>
-          <p>Valor impuestos: {form.consignee}</p>
-          <p>Valor transporte: {form.shipper}</p>
-          <p>Beneficio imaginario: {form.originCountry}</p>
-        </div>
-      ),
-      options: ["Reiniciar", "Continuar"],
-      function: (params) => {
-        if (params.userInput === "Reiniciar") {
-          return "1";
-        }
-      },
-      path: "18",
+      message: "Ingrese el valor de la mercadería asegurada en USD:",
+      // valor numérico
+      user: true,
+      function: (params) => handleInputChange(17, params.userInput),
+      path: (params) =>
+        Number(params.userInput)
+          ? "18"
+          : params.injectMessage("Ingrese un valor numérico"),
     },
     18: {
+      message: "Ingrese el valor de impuestos:",
+      // valor numérico
+
+      user: true,
+      function: (params) => handleInputChange(18, params.userInput),
+      path: (params) =>
+        Number(params.userInput)
+          ? "19"
+          : params.injectMessage("Ingrese un valor numérico"),
+    },
+    19: {
+      message: "Ingrese el valor del transporte:",
+      // valor numérico
+      user: true,
+      function: (params) => handleInputChange(19, params.userInput),
+      path: (params) =>
+        Number(params.userInput)
+          ? "20"
+          : params.injectMessage("Ingrese un valor numérico"),
+    },
+    20: {
+      message: "Ingrese el valor del beneficio imaginario:",
+      // preguntar valor beneficio imaginario
+      user: false,
+      options: ["10", "15", "20"],
+      function: (params) => handleInputChange(20, params.userInput),
+      path: "21",
+    },
+    21: {
       message: "Guerra o huelga",
+      // perguntar valor guerra o huelga
       options: ["Sí", "No"],
-      function: (params) => handleInputChange(18, params.userInput === "Sí"),
+      function: (params) => {
+        handleInputChange(21, params.userInput === "Sí");
+        console.log(Object.values(warning), typeof Object.values(warning));
+      },
       chatDisabled: true,
       end: true,
     },
-    19: {
+    22: {
       message: "Quizás quisiste decir:",
       options: locationOptions,
-      function: (params) => handleInputChange(nextStep - 1, params.userInput),
+      function: (params) => handleInputChange(currentStep, params.userInput),
       path: async (params) =>
         await validateCountryInput(params, currentStep, nextStep.toString()),
-    },
-    20: {
-      message:
-        "Servicios no disponibles para el país seleccionado. Por favor, elige otro destino u origen.",
     },
   };
 
